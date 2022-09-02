@@ -27,8 +27,8 @@ def create_app(test_config=None):
         start = (page - 1) * 10
         end = start + 10
             
-        result = Book.query.order_by(Book.id).all()
-        formatted_books = [book.format() for book in result]
+        # result = Book.query.order_by(Book.id).all()
+        formatted_books = [book.format() for book in books]
         current_book = formatted_books[start:end]
         return current_book
     
@@ -63,6 +63,18 @@ def create_app(test_config=None):
             "books": books,
             "total_books": len(formatted_books)
         })
+        
+    @app.route('/books/<int:id>',methods=['GET'])
+    def get_a_book(id):
+        book = Book.query.filter(Book.id == id).one_or_none()
+        if book is None:
+            abort(404)
+        else:
+            return jsonify({
+            "success": True,
+            "book": book.format(),
+        })
+
 
     # @TODO: Write a route that will update a single book's rating.
     #         It should only be able to update the rating, not the entire representation
@@ -124,27 +136,39 @@ def create_app(test_config=None):
     @app.route("/books",methods=['POST'])
     def add_book():
         body = request.get_json()
+        title = body.get('title')
+        author = body.get('author')
+        rating = body.get('rating')
+        search = body.get('search', None)
         try:
-            title = body.get('title')
-            author = body.get('author')
-            rating = body.get('rating')
-            new_book = Book(title= title,author= author,rating= rating)
-            new_book.insert()
-            # db.session.add(new_book)
-            # db.session.commit()
-            
-            page = request.args.get('page',1,type=int)
-            start = (page - 1) * 10
-            end = start + 10
-            
-            result = Book.query.order_by(Book.id).all()
-            formatted_books = [book.format() for book in result]
-            books = formatted_books[start:end]
-            return jsonify({
-                "success": True,
-                "books": new_book.id,
-                "total_books": len(Book.query.all())
-            })
+            if search:
+                books = Book.query.order_by(Book.id).filter(Book.title.ilike('%{}'.format(search)))
+                current_books = paginate_books(request, books)
+                
+                return jsonify({
+                    'success': True,
+                    'books': current_books,
+                    'total_books': len(books.all())
+                })
+            else:
+                
+                new_book = Book(title= title,author= author,rating= rating)
+                new_book.insert()
+                # db.session.add(new_book)
+                # db.session.commit()
+                
+                page = request.args.get('page',1,type=int)
+                start = (page - 1) * 10
+                end = start + 10
+                
+                books = Book.query.order_by(Book.id).all()
+                current_books = paginate_books(request, books)
+                return jsonify({
+                    "success": True,
+                    "books": current_books,
+                    "created": new_book.id,
+                    "total_books": len(Book.query.all())
+                })
         except :
             print(sys.exc_info())
             abort(400)
@@ -157,19 +181,27 @@ def create_app(test_config=None):
             'message': "Resource not found"
             }),404
             
-        @app.errorhandler(400)
-        def bad_request(error):
-            return jsonify({
-                'success': False,
-                'error': 400,
-                'message': "please send a valid request"
-            }),400
+    @app.errorhandler(400)
+    def bad_request(error):
+        return jsonify({
+            'success': False,
+            'error': 400,
+            'message': "please send a valid request"
+        }),400
             
-        @app.errorhandler(422)
-        def unprocessable(error):
-            return jsonify({
-                'success': False,
-                'error': 422,
-                'message': "request cannot be processed"
-            }),400       
+    @app.errorhandler(422)
+    def unprocessable(error):
+        return jsonify({
+            'success': False,
+            'error': 422,
+            'message': "request cannot be processed"
+        }),400       
+            
+    @app.errorhandler(405)
+    def methdo_not_allowed(error):
+         return jsonify({
+            "success": False,
+            "error": 405,
+            "message": "method not allowed"
+        })
     return app
